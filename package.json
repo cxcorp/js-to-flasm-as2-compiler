@@ -1,0 +1,21 @@
+{
+  "name": "js-to-flasm-as2-compiler",
+  "version": "0.0.1",
+  "private": true,
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "nodemon src/index.js"
+  },
+  "keywords": [],
+  "author": "Joona Heikkilä (https://github.com/cxcorp)",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/code-frame": "^7.10.4",
+    "@babel/parser": "^7.11.5",
+    "lodash.uniq": "^4.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.4"
+  }
+}
