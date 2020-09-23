@@ -71,6 +71,8 @@ function2 gatherStats (r:2='velocity') (r:1='this')
   push r:7 /*temp*/
   pop
   //-- localVar = 'foobar'
+  
+  // <-- crashes here because I haven't implemented StringLiteral ASM nodes yet
 ```
 
 ## Usage
