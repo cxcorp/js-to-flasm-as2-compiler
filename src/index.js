@@ -101,11 +101,11 @@ let debugShit = "";
 
 class Compiler {
   constructor({
-    emitDeclarationComments,
+    emitStatementComments,
     emitAssignmentComments,
     emitRegisterComments,
   }) {
-    this._emitDeclarationComments = emitDeclarationComments;
+    this._emitStatementComments = emitStatementComments;
     this._emitAssignmentComments = emitAssignmentComments;
     this._emitRegisterComments = emitRegisterComments;
   }
@@ -117,11 +117,11 @@ class Compiler {
   _functionContext = [];
 
   generators = {
-    FunctionDeclaration: (fnNode) => {
+    FunctionDeclaration: (node) => {
       // TODO: function closures - generate uniq names for globals for us to use?
-      this.assertImplemented(fnNode.id.type === "Identifier", fnNode.id);
+      this.assertImplemented(node.id.type === "Identifier", node.id);
 
-      const functionName = fnNode.id.name;
+      const functionName = node.id.name;
       const registerAllocator = new RegisterAllocator();
 
       const registers = {
@@ -134,29 +134,26 @@ class Compiler {
       };
 
       // Reserve registers for arguments
-      fnNode.params.forEach((param) => {
+      node.params.forEach((param) => {
         this.assertImplemented(param.type === "Identifier", param);
         registers.args[param.name] = registerAllocator.allocate(param.name);
       });
 
-      this.assertImplemented(
-        fnNode.body.type === "BlockStatement",
-        fnNode.body
-      );
+      this.assertImplemented(node.body.type === "BlockStatement", node.body);
 
       // Reserve registers for local variables
       uniq(
-        fnNode.body.body
-          .filter((node) => node.type === "VariableDeclaration")
-          .flatMap((node) => {
-            if (node.kind !== "var") {
+        node.body.body
+          .filter((n) => n.type === "VariableDeclaration")
+          .flatMap((n) => {
+            if (n.kind !== "var") {
               console.error(
                 'Error: Only "var" variable declarations are supported'
               );
-              this.throwNodeNotImplemented(node);
+              this.throwNodeNotImplemented(n);
             }
 
-            return node.declarations.map((declNode) => declNode.id.name);
+            return n.declarations.map((declNode) => declNode.id.name);
           })
       ).forEach((varName) => {
         // deduplicate args, so just merge multiple "var foo", "var foo" into one
@@ -220,7 +217,7 @@ class Compiler {
         freeTemporaryRegister: (register) => registerAllocator.free(register),
       });
 
-      this.print(fnNode.body);
+      this.print(node.body);
 
       this.popFunctionContext();
       this.deindent();
@@ -231,13 +228,13 @@ class Compiler {
         this.print(bodyNode);
       }
     },
-    VariableDeclaration: (declNode) => {
-      if (this._emitDeclarationComments) {
-        this.emitNodeSourceComment(declNode);
+    VariableDeclaration: (node) => {
+      if (this._emitStatementComments) {
+        this.emitNodeSourceComment(node);
       }
       // can just print out the declarations - if we had different behavior for
       // var,let,const, we'd probably have stuff to do here
-      for (const declaration of declNode.declarations) {
+      for (const declaration of node.declarations) {
         this.print(declaration);
       }
     },
@@ -486,7 +483,7 @@ class Compiler {
 }
 
 new Compiler({
-  emitDeclarationComments: true,
   emitAssignmentComments: true,
+  emitStatementComments: true,
   emitRegisterComments: true,
 }).compile(code);
