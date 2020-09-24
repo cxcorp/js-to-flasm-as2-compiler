@@ -632,6 +632,7 @@ class Compiler {
       for (const body of result.program.body) {
         this.print(body);
       }
+      this.optimize();
     } catch (e) {
       if (e instanceof CompilerError) {
         this.optimize();
