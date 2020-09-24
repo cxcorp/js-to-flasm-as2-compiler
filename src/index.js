@@ -15,9 +15,16 @@ function gatherStats(velocity) {
 
     globalVar = (localVar = 1111);
     globalVar = (globalVar2 = 1111);
+    globalVar = (globalVar2 = undefined);
 
-    localVar = 'foobar';
-    return '{"type":"velocity","data":' + velocity + '}'
+    velocity = atv.velocity;
+    globalVelocity = atv.velocity;
+
+    atv.bar = 1;
+    this.foo = this.bar + 1;
+
+    localVar = 'foo\\nbar';
+    return '{"type":"velocity","data":' + (velocity + 1) + '}'
 }
 enqueueStats(gatherStats(atvMC.velocity))
 `;
@@ -102,7 +109,8 @@ function isPushableLiteralNode(node) {
     node.type === "StringLiteral" ||
     node.type === "BooleanLiteral" ||
     node.type === "NumericLiteral" ||
-    node.type === "BigIntLiteral"
+    node.type === "BigIntLiteral" ||
+    (node.type === "Identifier" && node.name === "undefined")
   );
 }
 
@@ -288,8 +296,67 @@ class Compiler {
     NumericLiteral: (node) => {
       this.emit(`push ${node.value}`);
     },
+    StringLiteral: (node) => {
+      const escapes = [
+        [/\x08/, "\\b"],
+        [/\x0c/, "\\f"],
+        [/\x0a/, "\\n"],
+        [/\x0d/, "\\r"],
+        [/\x09/, "\\t"],
+      ];
+
+      const escaped = escapes.reduce((str, [regex, replacement]) => {
+        return str.replace(regex, replacement);
+      }, node.value);
+
+      this.emit(`push '${escaped}'`);
+    },
+    Identifier: (node) => {
+      const { name } = node;
+
+      if (name === "undefined") {
+        this.emit("push UNDEF");
+        return;
+      }
+
+      const ctx = this.peekFunctionContext();
+      const register = ctx && ctx.getVariableRegister(name);
+      // local variable or arg
+      if (register) {
+        this.emit(`push ${register.toToken()}`);
+        return;
+      }
+
+      // global
+      this.emit(`push '${name}`);
+      this.emit("getVariable");
+    },
+    ReturnStatement: (node) => {
+      if (this._emitStatementComments) {
+        this.emitNodeSourceComment(node);
+      }
+      const { argument } = node;
+
+      this.print(argument);
+      this.emit("return");
+    },
     ExpressionStatement: (node) => {
+      if (this._emitStatementComments) {
+        this.emitNodeSourceComment(node);
+      }
+
+      // HACK: Suggest to the expression node's AST visitor that we don't
+      // really need the return value, so they can leave the stack clean.
+      node.expression.__internalVoidExpressionOffered = true;
+
       this.print(node.expression);
+
+      // HACK: Visitor accepted this and cleaned up the stack so we don't need
+      // to.
+      if (node.expression.__internalVoidExpressionAck) {
+        return;
+      }
+
       this.emit("pop");
     },
     AssignmentExpression: (node) => {
@@ -299,7 +366,7 @@ class Compiler {
       const { left, operator, right } = node;
 
       // Assume "left" is variable
-      if (left.type !== "Identifier") {
+      if (left.type !== "Identifier" && left.type !== "MemberExpression") {
         throw new CompilerError(
           `Left-side type "${left.type}" for operator "${node.operator}" not implemented for node "${node.type}"`,
           left
@@ -324,61 +391,144 @@ class Compiler {
 
       const rightIsLiteral = isPushableLiteralNode(right);
       const ctx = this.peekFunctionContext();
-      const isInsideFunction = !!ctx;
       const leftIsRegister = !!(ctx && ctx.getVariableRegister(left.name));
 
       if (leftIsRegister) {
+        // Easy case - setRegister doesn't eat value from stack.
         evaluateRight();
         const register = ctx.getVariableRegister(left.name);
         this.emit(`setRegister ${register.toToken()}`);
+
+        if (node.__internalVoidExpressionOffered) {
+          this.emit("pop");
+          node.__internalVoidExpressionAck = true;
+        }
         return;
       }
 
-      // Left needs to be setVariable'd and it's just a literal that's cheap to
-      // evaluate again (a single push)
+      const leftIsMemberExpression = left.type === "MemberExpression";
+      const isInsideFunction = !!ctx;
+
+      if (leftIsMemberExpression) {
+        // HACK so MemberExpression doesn't call getExpression - maybe I'm just
+        // implementing this poorly or JS differs from AS in this aspect.
+        left.__internalSkipGetMember = true;
+      }
+
+      const evaluateLeft = () =>
+        leftIsMemberExpression
+          ? this.print(left)
+          : this.emit(`push '${left.name}'`);
+      // Code below assumes `emitAssignment` eats the evaluated value from the
+      // stack.
+      const emitAssignment = () =>
+        leftIsMemberExpression
+          ? this.emit("setMember")
+          : this.emit("setVariable");
+
+      if (node.__internalVoidExpressionOffered) {
+        // Callee cleanup
+        // A parent node has told us that they don't need the right value to be
+        // on the stack.
+        evaluateLeft();
+        // Evaluate value onto stack
+        evaluateRight();
+        // Assign it
+        emitAssignment();
+        node.__internalVoidExpressionAck = true;
+        return;
+      }
+
+      // CALLER CLEANUP
+      // Since this is an expression, the value of the expression needs to be
+      // present on the stack after we finish. The following blocks deal with
+      // preserving the value, because setVariable and setMember eat the value.
+
+      // A) Right is a literal which we can just `push` after assignment.
+      // If it's not a literal, we don't want to re-evaluate it so we don't
+      // get unexpected side-effects.
       if (rightIsLiteral) {
-        // push variable name in advance so it's on the stack before the value
-        this.emit(`push '${left.name}'`);
+        evaluateLeft();
         evaluateRight();
-        this.emit("setVariable");
+        emitAssignment();
         evaluateRight();
         return;
       }
 
-      // Left needs to be setVariable'd and right may be expensive to
-      // re-evaluate or may cause side-effects -> store its value in a scratch
-      // register so that its value is on the stack when this node is done.
-
-      // A) We're in a function so we can use the function's registers as
+      // B) We're in a function so we can use the function's registers as
       // temporary registers
       if (isInsideFunction) {
-        this.emit(`push '${left.name}'`);
-
+        evaluateLeft();
         evaluateRight();
 
         const tempRegister = ctx.allocTemporaryRegister();
         this.emit(`setRegister ${tempRegister.toToken()}`);
         // store value
-        this.emit("setVariable");
+        emitAssignment();
         // push the value back onto the stack since we're in an expression
         this.emit(`push ${tempRegister.toToken()}`);
         ctx.freeTemporaryRegister(tempRegister);
         return;
       }
 
-      // B) We're at the root so we can't use temporary function registers
-
+      // C) We're at the root so we can't use temporary function registers
       // borrow a global register, remember to restore afterwards
       this.emit("push r:1");
-      this.emit(`push '${left.name}'`);
-
-      // Evaluate value onto stack
+      evaluateLeft();
       evaluateRight();
-
       this.emit("setRegister r:1");
-      this.emit("setVariable");
+      emitAssignment();
       // Restore the borrowed global register
       this.emit("setRegister r:1");
+    },
+    BinaryExpression: (node) => {
+      const { left, right, operator } = node;
+
+      this.print(left);
+      this.print(right);
+      switch (operator) {
+        case "+": {
+          this.emit("add");
+          break;
+        }
+        case "-": {
+          this.emit("sub");
+          break;
+        }
+        default:
+          throw new CompilerError(
+            `Operator "${operator}" not implemented for "${node.type}"`,
+            node
+          );
+      }
+    },
+    MemberExpression: (node) => {
+      if (node.computed) {
+        throw new CompilerError(
+          `Computed properties are not implemented for ${node.type}`,
+          node
+        );
+      }
+
+      const { object, property } = node;
+      this.assertImplemented(object.type === "Identifier", object);
+      this.assertImplemented(property.type === "Identifier", property);
+
+      const ctx = this.peekFunctionContext();
+      const objectInRegister = ctx && ctx.getVariableRegister(object.name);
+
+      if (objectInRegister) {
+        this.emit(`push ${objectInRegister.toToken()}`);
+      } else {
+        this.emit(`push '${object.name}'`);
+        this.emit("getVariable");
+      }
+
+      this.emit(`push '${property.name}'`);
+
+      if (!node.__internalSkipGetMember) {
+        this.emit("getMember");
+      }
     },
   };
 
