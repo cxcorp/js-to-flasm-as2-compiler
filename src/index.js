@@ -132,7 +132,7 @@ class Compiler {
   generators = {
     FunctionDeclaration: (node) => {
       // TODO: function closures - generate uniq names for globals for us to use?
-      this.assertImplemented(node.id.type === "Identifier", node.id);
+      this.assertImplemented(() => node.id.type === "Identifier", node.id);
 
       const functionName = node.id.name;
       const registerAllocator = new RegisterAllocator();
@@ -148,11 +148,14 @@ class Compiler {
 
       // Reserve registers for arguments
       node.params.forEach((param) => {
-        this.assertImplemented(param.type === "Identifier", param);
+        this.assertImplemented(() => param.type === "Identifier", param);
         registers.args[param.name] = registerAllocator.allocate(param.name);
       });
 
-      this.assertImplemented(node.body.type === "BlockStatement", node.body);
+      this.assertImplemented(
+        () => node.body.type === "BlockStatement",
+        node.body
+      );
 
       // Reserve registers for local variables
       uniq(
@@ -249,7 +252,7 @@ class Compiler {
     },
     VariableDeclarator: (node) => {
       const { id, init } = node;
-      this.assertImplemented(id.type === "Identifier", id);
+      this.assertImplemented(() => id.type === "Identifier", id);
       const variableName = id.name;
 
       const fnCtx = this.peekFunctionContext();
@@ -571,8 +574,9 @@ class Compiler {
 
   print(node) {
     const generator = this.generators[node.type];
-
-    this.assertImplemented(!!generator, node);
+    if (!generator) {
+      throw new CompilerError(`Node "${node.type}" is not implemented.`, node);
+    }
 
     generator(node);
   }
@@ -622,8 +626,15 @@ class Compiler {
   }
 
   assertImplemented(assertion, astNode) {
-    if (!assertion) {
-      this.throwNodeNotImplemented(astNode);
+    if (!assertion()) {
+      const e = new CompilerError(
+        `Feature related to AST token "${astNode.type}" is not implemented in the compiler.`,
+        astNode
+      );
+      e.original = new CompilerError(
+        `Assertion "${assertion.toString()}" failed near node "${astNode.type}"`
+      );
+      throw e;
     }
   }
 
