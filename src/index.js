@@ -323,8 +323,11 @@ class Compiler {
       }
 
       // global
-      this.emit(`push '${name}`);
-      this.emit("getVariable");
+      this.emit(`push '${name}'`);
+
+      if (!node.__internalSkipGetMember) {
+        this.emit("getVariable");
+      }
     },
     ReturnStatement: (node) => {
       if (this._emitStatementComments) {
@@ -506,23 +509,97 @@ class Compiler {
       }
 
       const { object, property } = node;
-      this.assertImplemented(object.type === "Identifier", object);
-      this.assertImplemented(property.type === "Identifier", property);
 
       const ctx = this.peekFunctionContext();
-      const objectInRegister = ctx && ctx.getVariableRegister(object.name);
 
-      if (objectInRegister) {
-        this.emit(`push ${objectInRegister.toToken()}`);
-      } else {
-        this.emit(`push '${object.name}'`);
-        this.emit("getVariable");
+      const pushObjectToStack = () => {
+        switch (object.type) {
+          case "Identifier": {
+            const objectInRegister =
+              ctx && ctx.getVariableRegister(object.name);
+
+            if (objectInRegister) {
+              this.emit(`push ${objectInRegister.toToken()}`);
+            } else {
+              this.emit(`push '${object.name}'`);
+              this.emit("getVariable");
+            }
+            break;
+          }
+          case "ThisExpression":
+            this.print(object);
+            break;
+          default:
+            throw new CompilerError(
+              `Object type "${object.type}" not implemented in "${node.type}".`,
+              object
+            );
+        }
+      };
+
+      pushObjectToStack();
+      if (property.type !== "Identifier") {
+        throw new CompilerError(
+          `Property type "${property.type}" not implemented in "${node.type}".`,
+          property
+        );
       }
-
       this.emit(`push '${property.name}'`);
 
       if (!node.__internalSkipGetMember) {
         this.emit("getMember");
+      }
+    },
+    ThisExpression: (node) => {
+      const ctx = this.peekFunctionContext();
+      if (!ctx) {
+        throw new CompilerError(
+          '"this" can only be used inside a function',
+          node
+        );
+      }
+
+      const register = ctx.getVariableRegister("this");
+      if (!register) {
+        throw new CompilerError(
+          'Internal error. Expected "this" variable to have a register allocated!',
+          node
+        );
+      }
+
+      this.emit(`push ${register.toToken()}`);
+    },
+    CallExpression: (node) => {
+      const { callee, arguments: args } = node;
+
+      if (callee.type === "Identifier" && callee.name === "trace") {
+        // Implementing would require us to notify caller somehow that
+        // there's nothing to clean up from the stack. Maybe preprocess
+        // AST and convert trace() calls into a custom node type?
+        // Maybe a plugin for @babel/parser?
+        throw new CompilerError(`"trace()" is not implemented.`, node);
+      }
+
+      [...args].reverse().forEach((argNode) => {
+        this.print(argNode);
+      });
+
+      this.emit(`push ${args.length}`);
+      callee.__internalSkipGetMember = true;
+      this.print(callee);
+
+      switch (callee.type) {
+        case "Identifier":
+          this.emit("callFunction");
+          break;
+        case "MemberExpression":
+          this.emit("callMethod");
+          break;
+        default:
+          throw new CompilerError(
+            `Callee type "${callee.type}" not implemented in "${node.type}"`,
+            callee
+          );
       }
     },
   };
