@@ -13,7 +13,7 @@ function addStackSimulation(compilerOutput) {
 
   const stacks = [];
   let currentStack = 0;
-  const stack = () => {
+  const getStack = () => {
     if (!stacks[currentStack]) {
       stacks[currentStack] = [];
     }
@@ -25,7 +25,7 @@ function addStackSimulation(compilerOutput) {
   const prevStack = () => {
     currentStack--;
   };
-  const stringifyStack = () => "// " + (stack().join(" | ") || "--<empty>");
+  const stringifyStack = () => "// " + (getStack().join(" | ") || "--<empty>");
 
   const trimStartEndQuote = (str) =>
     str.startsWith("'") && str.endsWith("'")
@@ -60,13 +60,17 @@ function addStackSimulation(compilerOutput) {
   let isInBlockComment = false;
 
   return compilerOutput.map((op) => {
+    const stack = getStack();
+    const push = (...args) => stack.push(...args);
+    const pop = () => stack.pop();
+
     const paddedOp = op.padEnd(rightpad);
     const [opcode, ...others] = op.trim().split(" ");
     const opcodeArgs = others.join(" ");
 
     switch (opcode) {
       case "return": {
-        if (stack().length > 1) {
+        if (stack.length > 1) {
           throw new Error(
             `Function returned with more than 1 value in stack! Stack was: // ${stringifyStack()}`
           );
@@ -124,63 +128,63 @@ function addStackSimulation(compilerOutput) {
           },
           [opcodeArgs]
         );
-        stack().push(...pushedArgs);
+        push(...pushedArgs);
         return paddedOp + stringifyStack();
       }
       case "getVariable": {
-        const varName = stack().pop();
-        stack().push(trimStartEndQuote(varName));
+        const varName = pop();
+        push(trimStartEndQuote(varName));
         return paddedOp + stringifyStack();
       }
       case "getMember": {
-        const property = stack().pop();
-        const object = stack().pop();
-        stack().push(`${object}.${trimStartEndQuote(property)}`);
+        const property = pop();
+        const object = pop();
+        push(`${object}.${trimStartEndQuote(property)}`);
         return paddedOp + stringifyStack();
       }
       case "callFunction": {
-        const fnName = trimStartEndQuote(stack().pop());
-        const argCount = parseInt(stack().pop(), 10);
-        const args = stack().splice(stack().length - argCount);
-        stack().push(`${fnName}(${args.reverse().join(", ")})`);
+        const fnName = trimStartEndQuote(pop());
+        const argCount = parseInt(pop(), 10);
+        const args = stack.splice(stack.length - argCount);
+        push(`${fnName}(${args.reverse().join(", ")})`);
         return paddedOp + stringifyStack();
       }
       case "callMethod": {
-        const fnName = trimStartEndQuote(stack().pop());
-        const object = stack().pop();
-        const argCount = parseInt(stack().pop(), 10);
-        const args = stack().splice(stack().length - argCount);
-        stack().push(`${object}.${fnName}(${args.reverse().join(", ")})`);
+        const fnName = trimStartEndQuote(pop());
+        const object = pop();
+        const argCount = parseInt(pop(), 10);
+        const args = stack.splice(stack.length - argCount);
+        push(`${object}.${fnName}(${args.reverse().join(", ")})`);
         return paddedOp + stringifyStack();
       }
       case "pop": {
-        stack().pop();
+        pop();
         return paddedOp + stringifyStack();
       }
       case "setRegister": {
         return paddedOp + stringifyStack();
       }
       case "setVariable": {
-        stack().pop();
-        stack().pop();
+        pop();
+        pop();
         return paddedOp + stringifyStack();
       }
       case "setMember": {
-        stack().pop();
-        stack().pop();
-        stack().pop();
+        pop();
+        pop();
+        pop();
         return paddedOp + stringifyStack();
       }
       case "add": {
-        const right = addSubAddParens(stack().pop());
-        const left = addSubAddParens(stack().pop());
-        stack().push(`${left}+${right}`);
+        const right = addSubAddParens(pop());
+        const left = addSubAddParens(pop());
+        push(`${left}+${right}`);
         return paddedOp + stringifyStack();
       }
       case "sub": {
-        const right = addSubAddParens(stack().pop());
-        const left = addSubAddParens(stack().pop());
-        stack().push(`${left}-${right}`);
+        const right = addSubAddParens(pop());
+        const left = addSubAddParens(pop());
+        push(`${left}-${right}`);
         return paddedOp + stringifyStack();
       }
       default: {
