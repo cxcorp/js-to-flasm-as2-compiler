@@ -4,6 +4,8 @@ const uniq = require("lodash.uniq");
 const fs = require("fs");
 
 const A = `
+outsideGlobalVar = (globalVar2 = 123);
+
 function gatherStats(velocity) {
     var emptyLocal,
       emptyLocal2,
@@ -82,6 +84,19 @@ class RegisterAllocator {
   }
 }
 
+/** Determines whether an AST node represents a literal that can be pushed directly with the push opcode. */
+function isPushableLiteralNode(node) {
+  // also .type === 'Identifier' && .name === 'undefined'
+  return (
+    node.type === "RegExpLiteral" ||
+    node.type === "NullLiteral" ||
+    node.type === "StringLiteral" ||
+    node.type === "BooleanLiteral" ||
+    node.type === "NumericLiteral" ||
+    node.type === "BigIntLiteral"
+  );
+}
+
 let debugShit = "";
 
 class Compiler {
@@ -104,9 +119,7 @@ class Compiler {
   generators = {
     FunctionDeclaration: (fnNode) => {
       // TODO: function closures - generate uniq names for globals for us to use?
-      if (fnNode.id.type !== "Identifier") {
-        this.throwNodeNotImplemented(fnNode.id);
-      }
+      this.assertImplemented(fnNode.id.type === "Identifier", fnNode.id);
 
       const functionName = fnNode.id.name;
       const registerAllocator = new RegisterAllocator();
@@ -122,15 +135,14 @@ class Compiler {
 
       // Reserve registers for arguments
       fnNode.params.forEach((param) => {
-        if (param.type !== "Identifier") {
-          this.throwNodeNotImplemented(param);
-        }
+        this.assertImplemented(param.type === "Identifier", param);
         registers.args[param.name] = registerAllocator.allocate(param.name);
       });
 
-      if (fnNode.body.type !== "BlockStatement") {
-        this.throwNodeNotImplemented(fnNode.body);
-      }
+      this.assertImplemented(
+        fnNode.body.type === "BlockStatement",
+        fnNode.body
+      );
 
       // Reserve registers for local variables
       uniq(
@@ -208,13 +220,16 @@ class Compiler {
         freeTemporaryRegister: (register) => registerAllocator.free(register),
       });
 
-      for (const bodyNode of fnNode.body.body) {
-        this.print(bodyNode);
-      }
+      this.print(fnNode.body);
 
       this.popFunctionContext();
       this.deindent();
       this.emit(`end // of function ${functionName}`);
+    },
+    BlockStatement: (node) => {
+      for (const bodyNode of node.body) {
+        this.print(bodyNode);
+      }
     },
     VariableDeclaration: (declNode) => {
       if (this._emitDeclarationComments) {
@@ -226,9 +241,9 @@ class Compiler {
         this.print(declaration);
       }
     },
-    VariableDeclarator: (declNode) => {
-      const { id, init } = declNode;
-      if (id.type !== "Identifier") this.throwNodeNotImplemented(id);
+    VariableDeclarator: (node) => {
+      const { id, init } = node;
+      this.assertImplemented(id.type === "Identifier", id);
       const variableName = id.name;
 
       const fnCtx = this.peekFunctionContext();
@@ -259,76 +274,105 @@ class Compiler {
       }
 
       // Global variable.
-
-      console.log({ id, init });
+      throw new CompilerError(
+        `Global variables not implemented for ${node.type}`,
+        node
+      );
     },
     NumericLiteral: (node) => {
       this.emit(`push ${node.value}`);
     },
-    ExpressionStatement: (exprNode) => {
-      this.print(exprNode.expression);
+    ExpressionStatement: (node) => {
+      this.print(node.expression);
       this.emit("pop");
     },
-    AssignmentExpression: (exprNode) => {
+    AssignmentExpression: (node) => {
       if (this._emitAssignmentComments) {
-        this.emitNodeSourceComment(exprNode);
+        this.emitNodeSourceComment(node);
       }
-      const { left, operator, right } = exprNode;
+      const { left, operator, right } = node;
 
+      // Assume "left" is variable
       if (left.type !== "Identifier") {
         throw new CompilerError(
-          `Left-side type "${left.type}" for operator "${exprNode.operator}" not implemented for node "${exprNode.type}"`,
+          `Left-side type "${left.type}" for operator "${node.operator}" not implemented for node "${node.type}"`,
           left
         );
       }
 
-      // Assume "left" is variable
+      const evaluateRight = () => {
+        switch (operator) {
+          case "=": {
+            // evaluate the right-side expression onto the stack
+            this.print(right);
+            break;
+          }
+          default: {
+            throw new CompilerError(
+              `Operator "${operator}" not implemented for node "${node.type}"`,
+              node
+            );
+          }
+        }
+      };
+
+      const rightIsLiteral = isPushableLiteralNode(right);
       const ctx = this.peekFunctionContext();
-      const localVarRegister = ctx && ctx.getVariableRegister(left.name);
+      const isInsideFunction = !!ctx;
+      const leftIsRegister = !!(ctx && ctx.getVariableRegister(left.name));
 
-      if (!localVarRegister) {
-        // If the variable is stored in a register, setRegister happens *after*
-        // computing the value onto the stack.
-        // If it's not a register variable, we need push the variable name
-        // so we can setVariable after value is on stack.
+      if (leftIsRegister) {
+        evaluateRight();
+        const register = ctx.getVariableRegister(left.name);
+        this.emit(`setRegister ${register.toToken()}`);
+        return;
+      }
+
+      // Left needs to be setVariable'd and it's just a literal that's cheap to
+      // evaluate again (a single push)
+      if (rightIsLiteral) {
+        // push variable name in advance so it's on the stack before the value
         this.emit(`push '${left.name}'`);
+        evaluateRight();
+        this.emit("setVariable");
+        evaluateRight();
+        return;
       }
 
-      switch (operator) {
-        case "=": {
-          // evaluate the right-side expression onto the stack
-          this.print(right);
-          break;
-        }
-        default: {
-          throw new CompilerError(
-            `Operator "${operator}" not implemented for node "${exprNode.type}"`,
-            exprNode
-          );
-        }
-      }
+      // Left needs to be setVariable'd and right may be expensive to
+      // re-evaluate or may cause side-effects -> store its value in a scratch
+      // register so that its value is on the stack when this node is done.
 
-      // store result into left
-      if (localVarRegister) {
-        this.emit(`setRegister ${localVarRegister.toToken()}`);
-      } else {
-        // We need the result of the assignment to be on the stack in case
-        // somebody is doing something with its return value - store the result
-        // onto a temporary register and push it after setVariable since
-        // setVariable eats the value
-        if (!ctx) {
-          // shit
-          throw new CompilerError(
-            `Using assignment expressions with non-local variables outside a function2 is not implemented!`,
-            exprNode
-          );
-        }
+      // A) We're in a function so we can use the function's registers as
+      // temporary registers
+      if (isInsideFunction) {
+        this.emit(`push '${left.name}'`);
+
+        evaluateRight();
+
         const tempRegister = ctx.allocTemporaryRegister();
         this.emit(`setRegister ${tempRegister.toToken()}`);
+        // store value
         this.emit("setVariable");
+        // push the value back onto the stack since we're in an expression
         this.emit(`push ${tempRegister.toToken()}`);
         ctx.freeTemporaryRegister(tempRegister);
+        return;
       }
+
+      // B) We're at the root so we can't use temporary function registers
+
+      // borrow a global register, remember to restore afterwards
+      this.emit("push r:1");
+      this.emit(`push '${left.name}'`);
+
+      // Evaluate value onto stack
+      evaluateRight();
+
+      this.emit("setRegister r:1");
+      this.emit("setVariable");
+      // Restore the borrowed global register
+      this.emit("setRegister r:1");
     },
   };
 
@@ -358,9 +402,8 @@ class Compiler {
 
   print(node) {
     const generator = this.generators[node.type];
-    if (!generator) {
-      this.throwNodeNotImplemented(node);
-    }
+
+    this.assertImplemented(!!generator, node);
 
     generator(node);
   }
@@ -405,6 +448,12 @@ class Compiler {
     }
 
     this.emit(`//-- ` + src);
+  }
+
+  assertImplemented(assertion, astNode) {
+    if (!assertion) {
+      this.throwNodeNotImplemented(astNode);
+    }
   }
 
   throwNodeNotImplemented(node) {
