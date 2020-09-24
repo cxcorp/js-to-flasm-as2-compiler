@@ -112,8 +112,6 @@ function isPushableLiteralNode(node) {
   );
 }
 
-let debugShit = "";
-
 class Compiler {
   constructor({
     emitStatementComments,
@@ -193,10 +191,6 @@ class Compiler {
         this.emit(`function2 ${functionName} (${argsStr}) (${metaStr})`);
         // locals aren't declared in the prelude, their registers are just...used
       };
-
-      console.log(functionName, registers);
-
-      debugShit += JSON.stringify(registers, null, 2);
 
       emitFunctionStart();
       this.indent();
@@ -563,7 +557,7 @@ class Compiler {
         this.optimize();
         fs.writeFileSync(
           "./debug.lua",
-          debugShit + "\n\n" + this._outputLines.join("\n"),
+          this._outputLines.join("\n"),
           "utf8"
         );
 
