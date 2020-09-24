@@ -3,6 +3,10 @@ const { codeFrameColumns } = require("@babel/code-frame");
 const uniq = require("lodash.uniq");
 const fs = require("fs");
 
+const addStackSimulation = require("./simulator");
+const Register = require("./register");
+const RegisterAllocator = require("./register-allocator");
+
 const A = `
 outsideGlobalVar = globalVar2 = 123;
 
@@ -20,18 +24,90 @@ function gatherStats(velocity) {
 
   atv.bar = 1;
   this.foo = this.bar + 1;
+  atv.x = atv.velocityX - atv.x;
 
   localVar = "foo\\nbar";
   return '{"type":"velocity","data":' + (velocity + 1) + "}";
 }
+
+global.enqueueStats(gatherStats(atvMC.velocity), 1)
 enqueueStats(gatherStats(atvMC.velocity));
+emptyFunction();
+global.emptyFunction();
 `;
 
 const B = `
-enqueueStats((function() {
-    return '{"type":"velocity","data":' + atvMC.velocity + '}'
-})())
+function handleEvent(x) {
+  function handler() {
+  }
+  this.handler = handler;
+  log(x);
+}
+atv.onEvent = handleEvent;
 `;
+
+const Ca = `
+if (foo > 0) {
+  console.log('aa')
+}
+console.log('bb')
+
+if (foo > 0) {
+  console.log('caa')
+} else {
+  console.log('cbb)
+}
+console.log('cc')
+
+if (foo > 0) {
+  console.log('>0')
+} else if (foo >-5) {
+  console.log('>-5')
+} else {
+  console.log('else')
+}
+console.log('outside')
+`;
+
+const C = `initializeSocketHook();
+
+function sendSocketHookJobs() {
+  var jobs = globalXmlSocketJobs.splice(0);
+  if (jobs.length > 0) {
+    globalXmlSocket.send("[" + jobs.join(",") + "]");
+  }
+}
+
+function initializeSocketHook() {
+  if (globalXmlSocket == undefined) {
+    globalXmlSocketJobs = new Array();
+    globalXmlSocket = new XMLSocket();
+
+    globalXmlSocket.addEventListener("securityError", function () {
+      globalReplyData = new LoadVars();
+      globalSendData = new LoadVars();
+      globalSendData.status = "SECURITY_ERROR";
+      globalSendData.sendAndLoad("/api/hello", globalReplyData, "POST");
+    });
+
+    globalXmlSocket.onClose = function tryReconnectGlobalXmlSocket() {
+      clearInterval(tryReconnectGlobalXmlSocketInterval);
+      if (!globalXmlSocket.connect("localhost", 10501)) {
+        tryReconnectGlobalXmlSocketInterval = setInterval(
+          tryReconnectGlobalXmlSocket,
+          1000
+        );
+      }
+    };
+
+    globalXmlSocket.onConnect = function () {
+      clearInterval(sendSocketHookJobsToken);
+      sendSocketHookJobsToken = setInterval(sendSocketHookJobs, 200);
+    };
+
+    globalXmlSocket.connect("localhost", 10501);
+  }
+}`;
 
 const code = A;
 
@@ -50,51 +126,6 @@ class CompilerError extends Error {
   constructor(message, astNode) {
     super(message);
     this.astNode = astNode;
-  }
-}
-
-class Register {
-  constructor(id, name, debugName) {
-    this.id = id;
-    this.name = name;
-    this.debugName = debugName;
-  }
-
-  toToken() {
-    return this.debugName
-      ? `r:${this.name || this.id} /*${this.debugName}*/`
-      : `r:${this.name || this.id}`;
-  }
-}
-
-/**
- * Very simple register allocator for function2 registers. Stores allocated
- * registers in a Record<number, Register>. When allocating, it just iterates
- * 1 to 255 until a free slot is found. When freeing, just deletes property
- * at the records' id. Good enough for us for now.
- */
-class RegisterAllocator {
-  _registers = {};
-
-  allocate(name, debugName) {
-    // start from 1 because I don't want to touch r:0 in case it _is_ some
-    // global register after all
-    for (let i = 1; i < 255; i++) {
-      if (this._registers[i]) {
-        // Register reserved
-        continue;
-      }
-      // Slot is free - take it.
-      this._registers[i] = new Register(i, name, debugName);
-      return this._registers[i];
-    }
-
-    throw new Error("Out of registers to allocate!");
-  }
-
-  /** @param {Register} register */
-  free(register) {
-    delete this._registers[register.id];
   }
 }
 
@@ -734,208 +765,3 @@ new Compiler({
   emitStatementComments: true,
   emitRegisterComments: true,
 }).compile(code);
-
-function maxBy(arr, fn) {
-  return arr.reduce((max, val) => {
-    const candidate = fn(val);
-    return candidate > max ? candidate : max;
-  }, 0);
-}
-
-function addStackSimulation(lines) {
-  const rightpad =
-    maxBy(lines, (line) =>
-      /\s*(\/\/|\/\*|function2)/.test(line) ? 0 : line.length
-    ) + 4;
-  const stacks = [];
-  let currentStack = 0;
-  const stack = () => {
-    if (!stacks[currentStack]) {
-      stacks[currentStack] = [];
-    }
-    return stacks[currentStack];
-  };
-  const nextStack = () => {
-    currentStack++;
-  };
-  const prevStack = () => {
-    currentStack--;
-  };
-  const stringifyStack = () => "// " + (stack().join(" | ") || "--<empty>");
-
-  const trimStartEndQuote = (str) =>
-    str.startsWith("'") && str.endsWith("'")
-      ? str.substring(1, str.length - 1)
-      : str;
-
-  const addSubAddParens = (operand) => {
-    let leftParenSeen = false;
-    for (let i = 0; i < operand.length; i++) {
-      if ((operand[i] === "-" || operand[i] === "+") && !leftParenSeen) {
-        return `(${operand})`;
-      }
-      if (operand[i] === "(") {
-        leftParenSeen;
-        continue;
-      }
-    }
-
-    let rightParenSeen = false;
-    for (let i = operand.length - 1; i >= 0; i--) {
-      if ((operand[i] === "-" || operand[i] === "+") && !rightParenSeen) {
-        return `(${operand})`;
-      }
-      if (operand[i] === ")") {
-        rightParenSeen;
-        continue;
-      }
-    }
-
-    return operand;
-  };
-  let isInBlockComment = false;
-
-  return lines.map((op) => {
-    const paddedOp = op.padEnd(rightpad);
-    const [opcode, ...others] = op.trim().split(" ");
-    const opcodeArgs = others.join(" ");
-
-    switch (opcode) {
-      case "return": {
-        if (stack().length > 1) {
-          throw new Error(
-            `Function returned with more than 1 value in stack! Stack was: // ${stringifyStack()}`
-          );
-        }
-        return paddedOp + stringifyStack();
-      }
-      case "function2": {
-        nextStack();
-        return op;
-      }
-      case "end": {
-        prevStack();
-        return op;
-      }
-      case "push": {
-        // split the push by the commas, ignoring commas inside strings
-        // could be fixed by emitting metadata instead of literal strings, but meh
-        const splits = [];
-        let currentStringQuotes = null;
-
-        let i = 0;
-        while (i < opcodeArgs.length) {
-          const c = opcodeArgs[i];
-          const prevC = opcodeArgs[i - 1];
-          const isEscaped = prevC === "\\";
-
-          if (c === "," && !currentStringQuotes) {
-            splits.push(i);
-          }
-
-          if (currentStringQuotes) {
-            if (
-              (c === '"' || c === "'") &&
-              c === currentStringQuotes &&
-              !isEscaped
-            ) {
-              currentStringQuotes = null;
-            }
-          } else {
-            if (c === '"') currentStringQuotes = '"';
-            if (c === "'") currentStringQuotes = "'";
-          }
-
-          i++;
-        }
-        const pushedArgs = splits.reverse().reduce(
-          (parts, splitIndex) => {
-            const str = parts.shift();
-            parts.unshift(
-              str.slice(0, splitIndex),
-              // remove comma (and trailing space if present)
-              str.slice(splitIndex + 1).replace(/^\s/, "")
-            );
-            return parts;
-          },
-          [opcodeArgs]
-        );
-        stack().push(...pushedArgs);
-        return paddedOp + stringifyStack();
-      }
-      case "getVariable": {
-        const varName = stack().pop();
-        stack().push(trimStartEndQuote(varName));
-        return paddedOp + stringifyStack();
-      }
-      case "getMember": {
-        const property = stack().pop();
-        const object = stack().pop();
-        stack().push(`${object}.${trimStartEndQuote(property)}`);
-        return paddedOp + stringifyStack();
-      }
-      case "callFunction": {
-        const fnName = trimStartEndQuote(stack().pop());
-        const argCount = parseInt(stack().pop(), 10);
-        const args = stack().splice(stack().length - argCount);
-        stack().push(`${fnName}(${args.reverse().join(", ")})`);
-        return paddedOp + stringifyStack();
-      }
-      case "callMethod": {
-        const fnName = trimStartEndQuote(stack().pop());
-        const object = stack().pop();
-        const argCount = parseInt(stack().pop(), 10);
-        const args = stack().splice(stack().length - argCount);
-        stack().push(`${object}.${fnName}(${args.reverse().join(", ")})`);
-        return paddedOp + stringifyStack();
-      }
-      case "pop": {
-        stack().pop();
-        return paddedOp + stringifyStack();
-      }
-      case "setRegister": {
-        return paddedOp + stringifyStack();
-      }
-      case "setVariable": {
-        stack().pop();
-        stack().pop();
-        return paddedOp + stringifyStack();
-      }
-      case "setMember": {
-        stack().pop();
-        stack().pop();
-        stack().pop();
-        return paddedOp + stringifyStack();
-      }
-      case "add": {
-        const right = addSubAddParens(stack().pop());
-        const left = addSubAddParens(stack().pop());
-        stack().push(`${left}+${right}`);
-        return paddedOp + stringifyStack();
-      }
-      case "sub": {
-        const right = addSubAddParens(stack().pop());
-        const left = addSubAddParens(stack().pop());
-        stack().push(`${left}-${right}`);
-        return paddedOp + stringifyStack();
-      }
-      default: {
-        if (op.trim().startsWith("/*")) {
-          isInBlockComment = true;
-          return op;
-        }
-        if (isInBlockComment && op.includes("*/")) {
-          isInBlockComment = false;
-          return op;
-        }
-        if (op.trim().startsWith("//")) {
-          return op;
-        }
-
-        throw new Error(
-          `Stack simulator encountered unimplemented opcode "${opcode}"`
-        );
-      }
-    }
-  });
-}
