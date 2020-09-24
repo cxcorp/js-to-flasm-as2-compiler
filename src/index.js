@@ -376,6 +376,26 @@ class Compiler {
     },
   };
 
+  optimize() {
+    const pushOpcodeRgx = /^\s*push /;
+
+    let i = 0;
+    while (i < this._outputLines.length - 1) {
+      const current = this._outputLines[i];
+      const next = this._outputLines[i + 1];
+      if (pushOpcodeRgx.test(current) && pushOpcodeRgx.test(next)) {
+        // current opcode is a push, and the next one is a push -> merge them
+        const newOpCode = current + ", " + next.replace(pushOpcodeRgx, "");
+        this._outputLines[i] = newOpCode;
+        this._outputLines.splice(i + 1, 1);
+        // don't increment i - allows us to chain this same operation for all
+        // following pushes
+        continue;
+      }
+      i++;
+    }
+  }
+
   compile(sourceCode) {
     this._sourceCode = sourceCode;
     const result = babelParser.parse(sourceCode);
@@ -386,6 +406,7 @@ class Compiler {
       }
     } catch (e) {
       if (e instanceof CompilerError) {
+        this.optimize();
         fs.writeFileSync(
           "./debug.lua",
           debugShit + "\n\n" + this._outputLines.join("\n"),
