@@ -32,6 +32,15 @@ const code = A;
 
 const INDENT_SPACES = 2;
 
+/**
+ * @typedef {{
+ *  declareVariable: (id: {type: string}) => void,
+ *  getVariableRegister: (varName: string) => (Register | undefined),
+ *  allocTemporaryRegister: () => Register,
+ *  freeTemporaryRegister: (r: Register) => void
+ * }} FunctionContext
+ */
+
 class CompilerError extends Error {
   constructor(message, astNode) {
     super(message);
@@ -438,9 +447,11 @@ class Compiler {
     }
   }
 
+  /** @param {FunctionContext} ctx */
   pushFunctionContext(ctx) {
     return this._functionContext.push(ctx);
   }
+  /** @returns {(FunctionContext | undefined)} */
   peekFunctionContext() {
     return this._functionContext.length > 0
       ? this._functionContext[this._functionContext.length - 1]
