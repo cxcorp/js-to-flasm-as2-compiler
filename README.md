@@ -13,66 +13,98 @@ The compiler will only support a subset of JS/AS2 features I need, and the proje
 Current work-in-progress sample source:
 
 ```js
+outsideGlobalVar = globalVar2 = 123;
+
 function gatherStats(velocity) {
-    var emptyLocal,
-      emptyLocal2,
-      nonEmptyLocal3;
-    var localVar = 123;
-    globalVar = 5432;
+  var emptyLocal, emptyLocal2, nonEmptyLocal3;
+  var localVar = 123;
+  globalVar = 5432;
 
-    globalVar = (localVar = 1111);
-    globalVar = (globalVar2 = 1111);
+  globalVar = localVar = 1111;
+  globalVar = globalVar2 = 1111;
+  globalVar = globalVar2 = undefined;
 
-    localVar = 'foobar';
-    return '{"type":"velocity","data":' + velocity + '}'
+  velocity = atv.velocity;
+  globalVelocity = atv.velocity;
+
+  atv.bar = 1;
+  this.foo = this.bar + 1;
+
+  localVar = "foo\\nbar";
+  return '{"type":"velocity","data":' + (velocity + 1) + "}";
 }
-enqueueStats(gatherStats(atvMC.velocity))
+enqueueStats(gatherStats(atvMC.velocity));
 ```
 
 Emits:
 
 ```lua
+//-- outsideGlobalVar = globalVar2 = 123;
+//-- outsideGlobalVar = globalVar2 = 123
+push 'outsideGlobalVar'
+//-- globalVar2 = 123
+push 'globalVar2', 123
+setVariable
+push 123
+setVariable
 function2 gatherStats (r:2='velocity') (r:1='this')
-  /*--[[
-  var emptyLocal,
-      emptyLocal2,
-      nonEmptyLocal3;
-  --]]*/
+  //-- var emptyLocal, emptyLocal2, nonEmptyLocal3;
   //-- var localVar = 123;
   push 123
   setRegister r:6 /*local:localVar*/
   pop
+  //-- globalVar = 5432;
   //-- globalVar = 5432
-  push 'globalVar'
-  push 5432
-  setRegister r:7 /*temp*/
+  push 'globalVar', 5432
   setVariable
-  push r:7 /*temp*/
-  pop
-  //-- globalVar = (localVar = 1111)
+  //-- globalVar = localVar = 1111;
+  //-- globalVar = localVar = 1111
   push 'globalVar'
   //-- localVar = 1111
   push 1111
   setRegister r:6 /*local:localVar*/
-  setRegister r:7 /*temp*/
   setVariable
-  push r:7 /*temp*/
-  pop
-  //-- globalVar = (globalVar2 = 1111)
+  //-- globalVar = globalVar2 = 1111;
+  //-- globalVar = globalVar2 = 1111
   push 'globalVar'
   //-- globalVar2 = 1111
-  push 'globalVar2'
+  push 'globalVar2', 1111
+  setVariable
   push 1111
-  setRegister r:7 /*temp*/
   setVariable
-  push r:7 /*temp*/
-  setRegister r:7 /*temp*/
+  //-- globalVar = globalVar2 = undefined;
+  //-- globalVar = globalVar2 = undefined
+  push 'globalVar'
+  //-- globalVar2 = undefined
+  push 'globalVar2', UNDEF
   setVariable
-  push r:7 /*temp*/
+  push UNDEF
+  setVariable
+  //-- velocity = atv.velocity;
+  //-- velocity = atv.velocity
+  push 'atv'
+  getVariable
+  push 'velocity'
+  getMember
+  setRegister r:velocity
   pop
-  //-- localVar = 'foobar'
-  
-  // <-- crashes here because I haven't implemented StringLiteral ASM nodes yet
+  //-- globalVelocity = atv.velocity;
+  //-- globalVelocity = atv.velocity
+  push 'globalVelocity', 'atv'
+  getVariable
+  push 'velocity'
+  getMember
+  setVariable
+  //-- atv.bar = 1;
+  //-- atv.bar = 1
+  push 'atv'
+  getVariable
+  push 'bar', 1
+  setMember
+  //-- this.foo = this.bar + 1;
+  //-- this.foo = this.bar + 1
+
+  // <-- crashes here because I haven't implemented an AST node
 ```
 
 ## Usage

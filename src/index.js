@@ -4,29 +4,27 @@ const uniq = require("lodash.uniq");
 const fs = require("fs");
 
 const A = `
-outsideGlobalVar = (globalVar2 = 123);
+outsideGlobalVar = globalVar2 = 123;
 
 function gatherStats(velocity) {
-    var emptyLocal,
-      emptyLocal2,
-      nonEmptyLocal3;
-    var localVar = 123;
-    globalVar = 5432;
+  var emptyLocal, emptyLocal2, nonEmptyLocal3;
+  var localVar = 123;
+  globalVar = 5432;
 
-    globalVar = (localVar = 1111);
-    globalVar = (globalVar2 = 1111);
-    globalVar = (globalVar2 = undefined);
+  globalVar = localVar = 1111;
+  globalVar = globalVar2 = 1111;
+  globalVar = globalVar2 = undefined;
 
-    velocity = atv.velocity;
-    globalVelocity = atv.velocity;
+  velocity = atv.velocity;
+  globalVelocity = atv.velocity;
 
-    atv.bar = 1;
-    this.foo = this.bar + 1;
+  atv.bar = 1;
+  this.foo = this.bar + 1;
 
-    localVar = 'foo\\nbar';
-    return '{"type":"velocity","data":' + (velocity + 1) + '}'
+  localVar = "foo\\nbar";
+  return '{"type":"velocity","data":' + (velocity + 1) + "}";
 }
-enqueueStats(gatherStats(atvMC.velocity))
+enqueueStats(gatherStats(atvMC.velocity));
 `;
 
 const B = `
