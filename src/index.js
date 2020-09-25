@@ -609,27 +609,26 @@ class Compiler {
         })
       );
 
-      const simpleOp = operators.get(operator);
-      if (simpleOp) {
-        this.emit(simpleOp);
+      if (operators.has(operator)) {
+        this.emit(operators.get(operator));
         return;
       }
 
       switch (operator) {
         case "!=":
-          this.emit(operators["=="]);
+          this.emit(operators.get("=="));
           this.emit("not");
           return;
         case "!==":
-          this.emit(operators["==="]);
+          this.emit(operators.get("==="));
           this.emit("not");
           return;
         case "<=":
-          this.emit(operators[">"]);
+          this.emit(operators.get(">"));
           this.emit("not");
           return;
         case ">=":
-          this.emit(operators["<"]);
+          this.emit(operators.get("<"));
           this.emit("not");
           return;
         default:
