@@ -28,9 +28,11 @@ const binaryOperators = {
 };
 
 function addStackSimulation(compilerOutput) {
+  compilerOutput = compilerOutput.join("\n").split("\n");
+
   const rightpad =
     maxBy(compilerOutput, (line) =>
-      /\s*(\/\/|\/\*|function2)/.test(line) ? 0 : line.length
+      /^\s*(\/\/|\/\*|function2)/.test(line) ? 0 : line.length
     ) + 4;
 
   const stacks = [];
@@ -89,6 +91,18 @@ function addStackSimulation(compilerOutput) {
     const paddedOp = op.padEnd(rightpad);
     const [opcode, ...others] = op.trim().split(" ");
     const opcodeArgs = others.join(" ");
+
+    if (op.trim().startsWith("/*")) {
+      isInBlockComment = true;
+      return op;
+    }
+
+    if (isInBlockComment) {
+      if (op.includes("*/")) {
+        isInBlockComment = false;
+      }
+      return op;
+    }
 
     if (opcode.endsWith(":")) {
       return op;
@@ -236,11 +250,9 @@ function addStackSimulation(compilerOutput) {
       }
       default: {
         if (op.trim().startsWith("/*")) {
-          isInBlockComment = true;
           return op;
         }
         if (isInBlockComment && op.includes("*/")) {
-          isInBlockComment = false;
           return op;
         }
         if (op.trim().startsWith("//")) {
