@@ -69,6 +69,21 @@ if (foo > 0) {
 console.log('outside')
 `;
 
+const Caa = `
+function send(data, len) {
+  if (len > 100) return;
+  if (len == 100) return 100;
+  if (len === 100) return 100;
+  if (len != 100) return 100;
+  if (len !== 1000) return 100;
+  if (len <= 0) {
+    return;
+  }
+
+  this.doSend(data, len);
+}
+`;
+
 const C = `initializeSocketHook();
 
 function sendSocketHookJobs() {
@@ -109,7 +124,7 @@ function initializeSocketHook() {
   }
 }`;
 
-const code = A;
+const code = Caa;
 
 const INDENT_SPACES = 2;
 
@@ -362,13 +377,49 @@ class Compiler {
         this.emit("getVariable");
       }
     },
+    IfStatement: (node) => {
+      const { test, consequent, alternate } = node;
+      const labelId = Math.floor(Math.random() * 0xffffffff);
+      const labelTrue = `label_${labelId}_true`;
+      const labelFalse = `label_${labelId}_false`;
+      const labelEnd = `label_${labelId}_end`;
+
+      const withDeindent = (fn) => {
+        if (this.indent > 0) {
+          this.deindent();
+          fn();
+          this.indent();
+        } else {
+          fn();
+        }
+      };
+
+      this.print(test);
+      this.emit(`branchIfTrue ${labelTrue}`);
+      // false
+      withDeindent(() => this.emit(`${labelFalse}:`));
+      if (alternate) {
+        this.print(alternate);
+      }
+      this.emit(`branch ${labelEnd}`);
+      withDeindent(() => this.emit(`${labelTrue}:`));
+      // true
+      if (consequent) {
+        this.print(consequent);
+      }
+      withDeindent(() => this.emit(`${labelEnd}:`));
+    },
     ReturnStatement: (node) => {
       if (this._emitStatementComments) {
         this.emitNodeSourceComment(node);
       }
       const { argument } = node;
 
-      this.print(argument);
+      if (argument) {
+        this.print(argument);
+      } else {
+        this.emit("push UNDEF");
+      }
       this.emit("return");
     },
     ExpressionStatement: (node) => {
@@ -517,15 +568,68 @@ class Compiler {
 
       this.print(left);
       this.print(right);
+
+      /*
+        enum BinaryOperator {
+          "==" | "!=" | "===" | "!=="
+            | "<" | "<=" | ">" | ">="
+            | "<<" | ">>" | ">>>"
+            | "+" | "-" | "*" | "/" | "%"
+            | "**" | "|" | "^" | "&" | "in"
+            | "instanceof"
+            | "|>"
+        }
+      */
+
+      const operators = new Map(
+        Object.entries({
+          "==": "equals",
+          // '!=': equals + not
+          "===": "strictEquals",
+          // '!==': strictEquals + not
+          "<": "lessThan",
+          // '<=': '>' + not
+          ">": "greaterThan",
+          // '>=': '<' + not
+          "<<": "shiftLeft",
+          ">>": "shiftRight",
+          ">>>": "shiftRight2", // maybe?
+          "+": "add",
+          "-": "subtract",
+          "*": "multiply",
+          "/": "divide",
+          "%": "modulo",
+          // ** not impl
+          "|": "bitwiseAnd",
+          "^": "bitwiseXor",
+          "&": "bitwiseOr",
+          instanceof: "instanceOf",
+        })
+      );
+
+      const simpleOp = operators.get(operator);
+      if (simpleOp) {
+        this.emit(simpleOp);
+        return;
+      }
+
       switch (operator) {
-        case "+": {
-          this.emit("add");
-          break;
-        }
-        case "-": {
-          this.emit("sub");
-          break;
-        }
+        case "!=":
+          this.emit(operators["=="]);
+          this.emit("not");
+          return;
+        case "!==":
+          this.emit(operators["==="]);
+          this.emit("not");
+          return;
+        case "<=":
+          this.emit(operators[">"]);
+          this.emit("not");
+          return;
+        case ">=":
+          this.emit(operators["<"]);
+          this.emit("not");
+          return;
         default:
           throw new CompilerError(
             `Operator "${operator}" not implemented for "${node.type}"`,

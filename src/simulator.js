@@ -5,6 +5,28 @@ function maxBy(arr, fn) {
   }, 0);
 }
 
+const binaryOperators = {
+  equals: "==",
+  // '!=': equals + not
+  strictEquals: "===",
+  // '!==': strictEquals + not
+  lessThan: "<",
+  // '<=': '>' + not
+  greaterThan: ">",
+  // '>=': '<' + not
+  shiftLeft: "<<",
+  shiftRight: ">>",
+  shiftRight2: ">>>",
+  add: "+",
+  subtract: "-",
+  multiply: "*",
+  divide: "/",
+  modulo: "%",
+  bitwiseAnd: "|",
+  bitwiseXor: "^",
+  bitwiseOr: "&",
+};
+
 function addStackSimulation(compilerOutput) {
   const rightpad =
     maxBy(compilerOutput, (line) =>
@@ -32,10 +54,10 @@ function addStackSimulation(compilerOutput) {
       ? str.substring(1, str.length - 1)
       : str;
 
-  const addSubAddParens = (operand) => {
+  const addOperatorParens = (operator, operand) => {
     let leftParenSeen = false;
     for (let i = 0; i < operand.length; i++) {
-      if ((operand[i] === "-" || operand[i] === "+") && !leftParenSeen) {
+      if (operand[i] === operator && !leftParenSeen) {
         return `(${operand})`;
       }
       if (operand[i] === "(") {
@@ -46,7 +68,7 @@ function addStackSimulation(compilerOutput) {
 
     let rightParenSeen = false;
     for (let i = operand.length - 1; i >= 0; i--) {
-      if ((operand[i] === "-" || operand[i] === "+") && !rightParenSeen) {
+      if (operand[i] === operator && !rightParenSeen) {
         return `(${operand})`;
       }
       if (operand[i] === ")") {
@@ -59,7 +81,7 @@ function addStackSimulation(compilerOutput) {
   };
   let isInBlockComment = false;
 
-  return compilerOutput.map((op) => {
+  const simulateStack = (op) => {
     const stack = getStack();
     const push = (...args) => stack.push(...args);
     const pop = () => stack.pop();
@@ -67,6 +89,10 @@ function addStackSimulation(compilerOutput) {
     const paddedOp = op.padEnd(rightpad);
     const [opcode, ...others] = op.trim().split(" ");
     const opcodeArgs = others.join(" ");
+
+    if (opcode.endsWith(":")) {
+      return op;
+    }
 
     switch (opcode) {
       case "return": {
@@ -175,16 +201,37 @@ function addStackSimulation(compilerOutput) {
         pop();
         return paddedOp + stringifyStack();
       }
-      case "add": {
-        const right = addSubAddParens(pop());
-        const left = addSubAddParens(pop());
-        push(`${left}+${right}`);
+      case "branch": {
+        return op;
+      }
+      case "branchIfTrue": {
+        pop();
         return paddedOp + stringifyStack();
       }
-      case "sub": {
-        const right = addSubAddParens(pop());
-        const left = addSubAddParens(pop());
-        push(`${left}-${right}`);
+      case "not": {
+        const val = pop();
+        push(`!(${val})`);
+        return paddedOp + stringifyStack();
+      }
+      case "equals":
+      case "strictEquals":
+      case "lessThan":
+      case "greaterThan":
+      case "shiftLeft":
+      case "shiftRight":
+      case "shiftRight2":
+      case "add":
+      case "subtract":
+      case "multiply":
+      case "divide":
+      case "modulo":
+      case "bitwiseAnd":
+      case "bitwiseXor":
+      case "bitwiseOr": {
+        const operator = binaryOperators[opcode];
+        const right = addOperatorParens(operator, pop());
+        const left = addOperatorParens(operator, pop());
+        push(`${left}${operator}${right}`);
         return paddedOp + stringifyStack();
       }
       default: {
@@ -205,7 +252,25 @@ function addStackSimulation(compilerOutput) {
         );
       }
     }
-  });
+  };
+
+  const newLines = [];
+  for (const line of compilerOutput) {
+    if (
+      line.trim().startsWith("branch") ||
+      line.trim().startsWith("branchIfTrue")
+    ) {
+      // bail out
+      return newLines.concat(compilerOutput.slice(newLines.length));
+    }
+    try {
+      newLines.push(simulateStack(line));
+    } catch (e) {
+      console.log(newLines.join("\n"));
+      throw e;
+    }
+  }
+  return newLines;
 }
 
 module.exports = addStackSimulation;
