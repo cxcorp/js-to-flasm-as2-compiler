@@ -395,17 +395,18 @@ class Compiler {
       };
 
       this.print(test);
-      this.emit(`branchIfTrue ${labelTrue}`);
-      // false
-      withDeindent(() => this.emit(`${labelFalse}:`));
-      if (alternate) {
-        this.print(alternate);
-      }
-      this.emit(`branch ${labelEnd}`);
+      this.emit("not");
+      this.emit(`branchIfTrue ${labelFalse}`);
       withDeindent(() => this.emit(`${labelTrue}:`));
       // true
       if (consequent) {
         this.print(consequent);
+      }
+      this.emit(`branch ${labelEnd}`);
+      // false
+      withDeindent(() => this.emit(`${labelFalse}:`));
+      if (alternate) {
+        this.print(alternate);
       }
       withDeindent(() => this.emit(`${labelEnd}:`));
     },
@@ -413,6 +414,7 @@ class Compiler {
       if (this._emitStatementComments) {
         this.emitNodeSourceComment(node);
       }
+
       const { argument } = node;
 
       if (argument) {
