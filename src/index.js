@@ -275,6 +275,8 @@ class Compiler {
       if (this._emitStatementComments) {
         this.emitNodeSourceComment(node);
       }
+      // TODO: investigate varEquals opcode
+
       // can just print out the declarations - if we had different behavior for
       // var,let,const, we'd probably have stuff to do here
       for (const declaration of node.declarations) {
