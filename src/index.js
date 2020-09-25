@@ -829,6 +829,9 @@ class Compiler {
   }
 
   emit(line) {
+    if (!line) {
+      throw new Error(`Attempted to emit falsy value "${line}"!`);
+    }
     this._outputLines.push("".padStart(this._indent) + line);
   }
 
