@@ -379,7 +379,7 @@ class Compiler {
     },
     IfStatement: (node) => {
       const { test, consequent, alternate } = node;
-      const labelId = Math.floor(Math.random() * 0xffffffff);
+      const labelId = Math.floor(Math.random() * 0xffffffff).toString(16);
       const labelTrue = `label_${labelId}_true`;
       const labelFalse = `label_${labelId}_false`;
       const labelEnd = `label_${labelId}_end`;
