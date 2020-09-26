@@ -120,7 +120,7 @@ class Compiler {
 
         const argsStr = stringifyRegisters(registers.args);
         const metaStr = stringifyRegisters(registers.meta);
-        this.emit(`function2 ${functionName} (${argsStr}) (${metaStr})`);
+        this.emit(`function2 '${functionName}' (${argsStr}) (${metaStr})`);
         // locals aren't declared in the prelude, their registers are just...used
       };
 
