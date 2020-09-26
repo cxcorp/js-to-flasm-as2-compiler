@@ -321,7 +321,7 @@ class Compiler {
       this.print(init);
 
       // Local variable?
-      const register = fnCtx && fnCtx.getVariableRegister(variableName);
+      const register = fnCtx?.getVariableRegister(variableName);
       if (register) {
         // We're inside a function and there's a register allocated for a
         // variable with this name -> store it into the right register
@@ -362,8 +362,7 @@ class Compiler {
         return;
       }
 
-      const ctx = this.peekFunctionContext();
-      const register = ctx && ctx.getVariableRegister(name);
+      const register = this.peekFunctionContext()?.getVariableRegister(name);
       // local variable or arg
       if (register) {
         this.emit(`push ${register.toToken()}`);
@@ -475,7 +474,7 @@ class Compiler {
 
       const rightIsLiteral = isPushableLiteralNode(right);
       const ctx = this.peekFunctionContext();
-      const leftIsRegister = !!(ctx && ctx.getVariableRegister(left.name));
+      const leftIsRegister = !!ctx?.getVariableRegister(left.name);
 
       if (leftIsRegister) {
         // Easy case - setRegister doesn't eat value from stack.
@@ -648,13 +647,12 @@ class Compiler {
 
       const { object, property } = node;
 
-      const ctx = this.peekFunctionContext();
-
       const pushObjectToStack = () => {
         switch (object.type) {
           case "Identifier": {
-            const objectInRegister =
-              ctx && ctx.getVariableRegister(object.name);
+            const objectInRegister = this.peekFunctionContext()?.getVariableRegister(
+              object.name
+            );
 
             if (objectInRegister) {
               this.emit(`push ${objectInRegister.toToken()}`);
