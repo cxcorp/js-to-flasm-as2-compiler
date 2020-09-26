@@ -10,9 +10,14 @@ class RegisterAllocator {
   _registers = {};
 
   allocate(name, debugName) {
-    // start from 1 because I don't want to touch r:0 in case it _is_ some
-    // global register after all
-    for (let i = 1; i < 255; i++) {
+    // register r:1 through r:254 available inside function2
+    // technically r:0 is available but flasm says:
+    // > Registers are allocated by Flash Player in the above order, i.e the 
+    // > value of 'this' goes to r:1, the value of 'arguments' to r:2 etc.
+    // > If 'this' is absent, 'arguments' goes to r:1. If you accidentally
+    // > tell Flasm to store automatic values in wrong registers, Flasm will
+    // > report an error.
+    for (let i = 1; i <= 254; i++) {
       if (this._registers[i]) {
         // Register reserved
         continue;
