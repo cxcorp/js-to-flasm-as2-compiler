@@ -641,6 +641,23 @@ class Compiler {
 
       this.emit(`push ${register.toToken()}`);
     },
+    NewExpression: (node) => {
+      const { callee, arguments: args } = node;
+      if (callee.type !== "Identifier") {
+        throw new CompilerError(
+          `Callee "${callee.type}" not implemented for "${node.type}"`,
+          callee
+        );
+      }
+
+      [...args].reverse().forEach((argNode) => {
+        this.print(argNode);
+      });
+
+      this.emit(`push ${args.length}`);
+      this.emit(`push '${callee.name}'`);
+      this.emit(`new`);
+    },
     CallExpression: (node) => {
       const { callee, arguments: args } = node;
 

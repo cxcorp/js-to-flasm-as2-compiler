@@ -186,6 +186,13 @@ function addStackSimulation(compilerOutput) {
         push(`${object}.${trimStartEndQuote(property)}`);
         return paddedOp + stringifyStack();
       }
+      case "new": {
+        const className = trimStartEndQuote(pop());
+        const argCount = parseInt(pop(), 10);
+        const args = stack.splice(stack.length - argCount);
+        push(`new ${className}(${args.reverse().join(", ")})`);
+        return paddedOp + stringifyStack();
+      }
       case "callFunction": {
         const fnName = trimStartEndQuote(pop());
         const argCount = parseInt(pop(), 10);
