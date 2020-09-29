@@ -1,127 +1,100 @@
-const Compiler = require("./compiler");
+const { codeFrameColumns } = require("@babel/code-frame");
+const util = require("util");
+const rimrafAsync = util.promisify(require("rimraf"));
+const fs = require("fs");
+const path = require("path");
+const nodeDir = require("node-dir");
 
-const A = `
-outsideGlobalVar = globalVar2 = 123;
+const { Compiler, CompilerError } = require("./compiler");
 
-function gatherStats(velocity) {
-  var emptyLocal, emptyLocal2, nonEmptyLocal3;
-  var localVar = 123;
-  globalVar = 5432;
-
-  globalVar = localVar = 1111;
-  globalVar = globalVar2 = 1111;
-  globalVar = globalVar2 = undefined;
-
-  velocity = atv.velocity;
-  globalVelocity = atv.velocity;
-
-  atv.bar = 1;
-  this.foo = this.bar + 1;
-  atv.x = atv.velocityX - atv.x;
-
-  localVar = "foo\\nbar";
-  return '{"type":"velocity","data":' + (velocity + 1) + "}";
+if (require.main !== module) {
+  throw new Error("This module is not for require()ing");
 }
 
-global.enqueueStats(gatherStats(atvMC.velocity), 1)
-enqueueStats(gatherStats(atvMC.velocity));
-emptyFunction();
-global.emptyFunction();
-`;
+// ran as script instead of require()
+runAsCommand().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
 
-const B = `
-function handleEvent(x) {
-  function handler() {
-  }
-  this.handler = handler;
-  log(x);
-}
-atv.onEvent = handleEvent;
-`;
-
-const Ca = `
-if (foo > 0) {
-  console.log('aa')
-}
-console.log('bb')
-
-if (foo > 0) {
-  console.log('caa')
-} else {
-  console.log('cbb)
-}
-console.log('cc')
-
-if (foo > 0) {
-  console.log('>0')
-} else if (foo >-5) {
-  console.log('>-5')
-} else {
-  console.log('else')
-}
-console.log('outside')
-`;
-
-const Caa = `
-function send(data, len) {
-  if (len > 100) return;
-  if (len == 100) return 100;
-  if (len === 100) return 100;
-  if (len != 100) return 100;
-  if (len !== 1000) return 100;
-  if (len <= 0) {
-    return;
-  }
-
-  this.doSend(data, len);
-}
-`;
-
-const C = `initializeSocketHook();
-
-function sendSocketHookJobs() {
-  var jobs = globalXmlSocketJobs.splice(0);
-  if (jobs.length > 0) {
-    globalXmlSocket.send("[" + jobs.join(",") + "]");
+async function readConfig() {
+  const configFile = process.argv[3] || "./js-to-flasm.config.json";
+  try {
+    return fs.promises.readFile(configFile, "utf-8");
+  } catch (e) {
+    if (e.code === "ENOENT") {
+      throw new Error(`Config file "${configFile}" does not exist!`);
+    }
+    throw e;
   }
 }
 
-function initializeSocketHook() {
-  if (globalXmlSocket == undefined) {
-    globalXmlSocketJobs = new Array();
-    globalXmlSocket = new XMLSocket();
+async function getConfig() {
+  const data = await readConfig();
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    const err = new Error(`Config file contained malformed JSON!`);
+    err.original = e;
+    throw err;
+  }
+}
 
-    globalXmlSocket.addEventListener("securityError", function foobar () {
-      globalReplyData = new LoadVars();
-      globalSendData = new LoadVars();
-      globalSendData.status = "SECURITY_ERROR";
-      globalSendData.sendAndLoad("/api/hello", globalReplyData, "POST");
-    });
+async function runAsCommand() {
+  // assume it's not malformed
+  const { dist, sourceRoot } = await getConfig();
+  await rimrafAsync(dist);
+  await fs.promises.mkdir(dist, { recursive: true });
 
-    globalXmlSocket.onClose = function tryReconnectGlobalXmlSocket() {
-      clearInterval(tryReconnectGlobalXmlSocketInterval);
-      if (!globalXmlSocket.connect("localhost", 10501)) {
-        tryReconnectGlobalXmlSocketInterval = setInterval(
-          tryReconnectGlobalXmlSocket,
-          1000
-        );
+  return new Promise((resolve, reject) => {
+    nodeDir.readFiles(
+      sourceRoot,
+      { match: /.js$/ },
+      async (err, content, file, next) => {
+        if (err) throw err;
+        if (content.trim().length === 0) {
+          console.log(`empty file ${file}`);
+          next();
+          return;
+        }
+
+        const relativeFilePath = path.relative(sourceRoot, file);
+
+        const compiler = new Compiler({
+          emitAssignmentComments: true,
+          emitStatementComments: true,
+          emitRegisterComments: true,
+        });
+        try {
+          const output = compiler.compile(content);
+
+          const outputDir = path.dirname(path.join(dist, relativeFilePath));
+          const fileName = path.basename(
+            relativeFilePath,
+            path.extname(relativeFilePath)
+          );
+          const outputFilePath = path.join(outputDir, `${fileName}.flm`);
+
+          await fs.promises.mkdir(outputDir, {
+            recursive: true,
+          });
+          await fs.promises.writeFile(outputFilePath, output, "utf-8");
+
+          console.log(`${file} -> ${outputFilePath}`);
+        } catch (e) {
+          if (e instanceof CompilerError) {
+            console.error(`Compiler error in file "${relativeFilePath}"`);
+            e.message += "\n" + codeFrameColumns(content, e.astNode.loc);
+          }
+          throw e;
+        }
+
+        next();
+      },
+      (err) => {
+        if (err) reject(err);
+        else resolve();
       }
-    };
-
-    globalXmlSocket.onConnect = function () {
-      clearInterval(sendSocketHookJobsToken);
-      sendSocketHookJobsToken = setInterval(sendSocketHookJobs, 200);
-    };
-
-    globalXmlSocket.connect("localhost", 10501);
-  }
-}`;
-
-const code = C;
-
-new Compiler({
-  writeDebug: true,
-  emitAssignmentComments: true,
-  emitStatementComments: true,
-  emitRegisterComments: true,
-}).compile(code);
+    );
+  });
+}

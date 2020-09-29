@@ -729,9 +729,8 @@ class Compiler {
       return lines;
     } catch (e) {
       if (e instanceof CompilerError) {
-        this.optimize();
-
         if (this._writeDebug) {
+          this.optimize();
           fs.writeFileSync(
             "./debug.lua",
             addStackSimulation(this._outputLines).join("\n"),
@@ -824,4 +823,4 @@ class Compiler {
   }
 }
 
-module.exports = Compiler;
+module.exports = { Compiler, CompilerError };
