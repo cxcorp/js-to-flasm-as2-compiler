@@ -535,6 +535,29 @@ class Compiler {
           );
       }
     },
+    UnaryExpression: (node) => {
+      const { operator, prefix, argument } = node;
+      if (!prefix) {
+        throw new CompilerError(
+          `Unexpected prefix=false in "${node.type}"`,
+          node
+        );
+      }
+
+      switch (operator) {
+        case "!": {
+          this.print(argument);
+          this.emit("not");
+          return;
+        }
+        default: {
+          throw new CompilerError(
+            `Operator "${operator}" not implemented in "${node.type}"`,
+            node
+          );
+        }
+      }
+    },
     MemberExpression: (node) => {
       if (node.computed) {
         throw new CompilerError(
