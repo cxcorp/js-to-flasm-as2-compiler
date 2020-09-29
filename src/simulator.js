@@ -27,6 +27,10 @@ const binaryOperators = {
   bitwiseOr: "&",
 };
 
+class Stack extends Array {
+  suppressSimulation = false;
+}
+
 function addStackSimulation(compilerOutput) {
   compilerOutput = compilerOutput.join("\n").split("\n");
 
@@ -39,7 +43,7 @@ function addStackSimulation(compilerOutput) {
   let currentStack = 0;
   const getStack = () => {
     if (!stacks[currentStack]) {
-      stacks[currentStack] = [];
+      stacks[currentStack] = new Stack();
     }
     return stacks[currentStack];
   };
@@ -47,6 +51,7 @@ function addStackSimulation(compilerOutput) {
     currentStack++;
   };
   const prevStack = () => {
+    stacks.splice(currentStack, 1);
     currentStack--;
   };
   const stringifyStack = () => "// " + (getStack().join(" | ") || "--<empty>");
@@ -105,6 +110,20 @@ function addStackSimulation(compilerOutput) {
     }
 
     if (opcode.endsWith(":")) {
+      return op;
+    }
+
+    // if we reach branching, suppress simulation for the rest of the function
+    if (opcode === "branch" || opcode === "branchIfTrue") {
+      stack.suppressSimulation = true;
+    } else if (opcode === "end") {
+      stack.suppressSimulation = false;
+    }
+
+    if (stack.suppressSimulation && opcode !== "function2") {
+      // if the current function's/context's simulation is suppressed
+      // due to branching AND we're not about to start a new stack,
+      // just don't simulate
       return op;
     }
 
@@ -279,13 +298,6 @@ function addStackSimulation(compilerOutput) {
 
   const newLines = [];
   for (const line of compilerOutput) {
-    if (
-      line.trim().startsWith("branch") ||
-      line.trim().startsWith("branchIfTrue")
-    ) {
-      // bail out
-      return newLines.concat(compilerOutput.slice(newLines.length));
-    }
     try {
       newLines.push(simulateStack(line));
     } catch (e) {
