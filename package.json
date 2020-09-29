@@ -7,6 +7,9 @@
   "scripts": {
     "start": "nodemon -i dist/ src/index.js"
   },
+  "bin": {
+    "js-to-flasm-as2-compiler": "./src/index.js"
+  },
   "keywords": [],
   "author": "Joona Heikkilä (https://github.com/cxcorp)",
   "license": "MIT",
