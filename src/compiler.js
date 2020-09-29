@@ -722,13 +722,11 @@ class Compiler {
         this.print(body);
       }
       this.optimize();
+      const lines = addStackSimulation(this._outputLines).join("\n");
       if (this._writeDebug) {
-        fs.writeFileSync(
-          "./debug.lua",
-          addStackSimulation(this._outputLines).join("\n"),
-          "utf8"
-        );
+        fs.writeFileSync("./debug.lua", lines, "utf8");
       }
+      return lines;
     } catch (e) {
       if (e instanceof CompilerError) {
         this.optimize();
