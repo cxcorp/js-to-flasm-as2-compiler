@@ -88,9 +88,11 @@ async function runAsCommand() {
           if (e instanceof CompilerError) {
             console.error(`Compiler error in file "${relativeFilePath}"`);
             e.message += "\n" + codeFrameColumns(content, e.astNode.loc);
-            e.message += JSON.stringify(e.astNode, null, 2)
+            e.message += JSON.stringify(e.astNode, null, 2);
           }
-          throw e;
+
+          reject(e);
+          return;
         }
 
         next();
