@@ -1,14 +1,14 @@
 {
   "name": "js-to-flasm-as2-compiler",
   "version": "0.0.1",
-  "private": true,
   "description": "",
-  "main": "src/index.js",
+  "main": "./lib/compiler.js",
   "scripts": {
-    "start": "nodemon -i dist/ src/index.js"
+    "start": "node ./bin/index.js",
+    "watch": "nodemon -i dist/ ./bin/index.js"
   },
   "bin": {
-    "js-to-flasm-as2-compiler": "./src/index.js"
+    "js-to-flasm-as2-compiler": "./bin/index.js"
   },
   "keywords": [],
   "author": "Joona Heikkilä (https://github.com/cxcorp)",

@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const { codeFrameColumns } = require("@babel/code-frame");
 const util = require("util");
 const rimrafAsync = util.promisify(require("rimraf"));
@@ -5,7 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const nodeDir = require("node-dir");
 
-const { Compiler, CompilerError } = require("./compiler");
+const { Compiler, CompilerError } = require("../lib/compiler");
 
 if (require.main !== module) {
   throw new Error("This module is not for require()ing");
@@ -61,6 +63,7 @@ async function runAsCommand() {
         const relativeFilePath = path.relative(sourceRoot, file);
 
         const compiler = new Compiler({
+          writeDebug: true,
           emitAssignmentComments: true,
           emitStatementComments: true,
           emitRegisterComments: true,
@@ -85,6 +88,7 @@ async function runAsCommand() {
           if (e instanceof CompilerError) {
             console.error(`Compiler error in file "${relativeFilePath}"`);
             e.message += "\n" + codeFrameColumns(content, e.astNode.loc);
+            e.message += JSON.stringify(e.astNode, null, 2)
           }
           throw e;
         }
