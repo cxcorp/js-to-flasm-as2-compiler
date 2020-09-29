@@ -61,9 +61,15 @@ class Compiler {
   generators = {
     FunctionDeclaration: (node) => {
       // TODO: function closures - generate uniq names for globals for us to use?
-      this.assertImplemented(() => node.id.type === "Identifier", node.id);
+      const isExpression = node.id === null;
+      if (node.id && node.id.type && node.id.type !== "Identifier") {
+        throw new CompilerError(
+          `Unknown node id type "${node.id.type}" in "${node.type}"`,
+          node.id
+        );
+      }
 
-      const functionName = node.id.name;
+      const functionName = !isExpression && node.id.name;
       const registerAllocator = new RegisterAllocator();
 
       const registers = {
@@ -120,7 +126,11 @@ class Compiler {
 
         const argsStr = stringifyRegisters(registers.args);
         const metaStr = stringifyRegisters(registers.meta);
-        this.emit(`function2 '${functionName}' (${argsStr}) (${metaStr})`);
+        if (isExpression) {
+          this.emit(`function2 (${argsStr}) (${metaStr})`);
+        } else {
+          this.emit(`function2 '${functionName}' (${argsStr}) (${metaStr})`);
+        }
         // locals aren't declared in the prelude, their registers are just...used
       };
 
@@ -162,7 +172,12 @@ class Compiler {
 
       this.popFunctionContext();
       this.deindent();
-      this.emit(`end // of function ${functionName}`);
+
+      if (isExpression) {
+        this.emit("end");
+      } else {
+        this.emit(`end // of function ${functionName}`);
+      }
     },
     BlockStatement: (node) => {
       for (const bodyNode of node.body) {
@@ -568,6 +583,21 @@ class Compiler {
       if (!node.__internalSkipGetMember) {
         this.emit("getMember");
       }
+    },
+    FunctionExpression: (node) => {
+      // https://github.com/uxebu/flash8-swfparser/blob/7250fa9bfb0182536650692196f7568c4a0c86f4/src/main/java/com/jswiff/swfrecords/actions/DefineFunction2.java#L46
+      // The difference between a function declaration and a function
+      // expression is that a function expression doesn't specify a name.
+      // A function2 without a name (an expression) is pushed to the stack,
+      // whereas one with a name (a declaration) does no stack operations.
+
+      // HACK: lol just discard id, replace root node with a
+      // FunctionDeclaration and emit a FunctionDeclaration
+      this.print({
+        ...node,
+        type: "FunctionDeclaration",
+        id: null,
+      });
     },
     ThisExpression: (node) => {
       const ctx = this.peekFunctionContext();

@@ -118,6 +118,10 @@ function addStackSimulation(compilerOutput) {
         return paddedOp + stringifyStack();
       }
       case "function2": {
+        if (!opcodeArgs.startsWith("'")) {
+          // function expression
+          push("function");
+        }
         nextStack();
         return op;
       }

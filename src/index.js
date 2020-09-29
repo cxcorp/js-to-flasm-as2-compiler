@@ -91,7 +91,7 @@ function initializeSocketHook() {
     globalXmlSocketJobs = new Array();
     globalXmlSocket = new XMLSocket();
 
-    globalXmlSocket.addEventListener("securityError", function () {
+    globalXmlSocket.addEventListener("securityError", function foobar () {
       globalReplyData = new LoadVars();
       globalSendData = new LoadVars();
       globalSendData.status = "SECURITY_ERROR";
@@ -117,7 +117,7 @@ function initializeSocketHook() {
   }
 }`;
 
-const code = Caa;
+const code = C;
 
 new Compiler({
   writeDebug: true,
