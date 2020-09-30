@@ -10,6 +10,18 @@ The compiler only supports a subset of JS/AS2 features I need, and the project r
 
 The compiler also simulates the stack to document the current stack as comments to the right of each line to make manual verification easier. If a branch or branchIfTrue opcode is reached (an if-else or a loop), the simulator skips rest of the function/context. Inner functions are simulated with their own stacks. Code statements are also added as comments before the bytecode for said statement.
 
+<!-- toc -->
+
+- [Example](#example)
+- [Usage](#usage)
+- [Caveats](#caveats)
+- [Configuration](#configuration)
+- [Compiler directives](#compiler-directives)
+  * [`@js2f/push-register-context`, `@js2f/pop-register-context`](#js2fpush-register-context-js2fpop-register-context)
+- [License](#license)
+
+<!-- tocstop -->
+
 ## Example
 
 Current work-in-progress sample source:
@@ -210,6 +222,16 @@ The compiler crashes if you use JS features that I haven't implemented.
 
 The comments are also `//--` and `/*--[[ --]]*/` because Flasm's comments are `//` and `/* */`, but I use Lua's syntax highlighting for FLM (it's good enough!) and Lua's are `--` and `--[[ --]]`.
 
+## Caveats
+- Only `var` is supported (no `let` or `const`)
+  * Variables are scoped to the current function, or to the global scope
+- `if` doesn't support logical binary operators
+  * Logical expressions are not implemented (no `&&` or `||`), though `!` is
+- `class` is not implemented, use prototype based programming (make a function that is a constructor and assign functions to Ctor.prototype)
+- a lot of features are not implemented
+  * feature list: see what compiles
+
+
 ## Configuration
 
 The compiler searches for a config file named `js-to-flasm.config.json` in the current directory, or from a path specified by the first argument passed to it.
@@ -231,7 +253,7 @@ Example config file:
 No other keys are supported, and both are required. Both file paths can be anything that node's `fs.readdir()` understands. Terminating `/` is probably optional.
 
 
-### Compiler directives
+## Compiler directives
 
 Compiler directives are implemented via single-line comments. Directives are not searched for inside block comments or JSDoc comments. A directive is of form:
 
@@ -245,7 +267,7 @@ or if it accepts arguments, it is of form:
 
 Current directives are:
 
-#### `@js2f/push-register-context`, `@js2f/pop-register-context`
+### `@js2f/push-register-context`, `@js2f/pop-register-context`
 
 Allows you to tell the compiler about register<->variable associations. For example, if you're compiling code that gets `#include`'d inside a function that you don't control (i.e. it's disassembled code), and you want to access `this` inside the function, you can instruct the compiler that it's in register n.
 
