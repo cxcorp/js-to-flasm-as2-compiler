@@ -26,6 +26,7 @@ declare namespace Context {
     getVariableRegister: (variableName: string) => Register | undefined;
     allocTemporaryRegister: () => Register;
     freeTemporaryRegister: (register: Register) => void;
+    callSuper: (node: any) => void;
   }
 
   interface LoopContext {

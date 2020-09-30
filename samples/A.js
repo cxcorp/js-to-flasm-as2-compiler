@@ -1,5 +1,18 @@
 outsideGlobalVar = globalVar2 = 123;
 
+function First() {
+  this.foo = 'first'
+}
+First.prototype.moo = function() {
+  return this.foo;
+}
+
+function Second() {
+  _super();
+}
+Second.prototype = new First()
+new Second().moo();
+
 function gatherStats(velocity) {
   var emptyLocal, emptyLocal2, nonEmptyLocal3;
   var localVar = 123;
