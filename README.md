@@ -6,9 +6,9 @@ Compile (a subset of) JavaScript or AS2 to ActionScript 2 (Flash Player 8 compat
 
 I'm modding an old Flash game and I got tired of writing ActionScript bytecode by hand. Luckily, ActionScript 2 is extremely similar to JavaScript (since AS2 partially conforms to the ECMAScript 4 spec) so I can just use [`@babel/parser`](https://babeljs.io/docs/en/babel-parser) to parse my source as JavaScript into an AST, and then emit the bytecode from the AST.
 
-The compiler will only support a subset of JS/AS2 features I need, and the project reserves the right to butcher semantics of the language to make it easier to implement. Development will also progress only when I find features I want to implement to make my life easier.
+The compiler only supports a subset of JS/AS2 features I need, and the project reserves the right to butcher semantics of the language to make it easier to implement. Development will also progress only when I find features I want to implement to make my life easier.
 
-The compiler also simulates the stack to document the current stack as comments to the right of each line to make manual verification easier. Code statements are also added as comments before the bytecode for said statement.
+The compiler also simulates the stack to document the current stack as comments to the right of each line to make manual verification easier. If a branch or branchIfTrue opcode is reached (an if-else or a loop), the simulator skips rest of the function/context. Inner functions are simulated with their own stacks. Code statements are also added as comments before the bytecode for said statement.
 
 ## Example
 
@@ -37,7 +37,7 @@ function gatherStats(velocity) {
   return '{"type":"velocity","data":' + (velocity + 1) + "}";
 }
 
-global.enqueueStats(gatherStats(atvMC.velocity), 1)
+global.enqueueStats(gatherStats(atvMC.velocity), 1);
 enqueueStats(gatherStats(atvMC.velocity));
 emptyFunction();
 global.emptyFunction();
@@ -54,7 +54,7 @@ push 'globalVar2', 123                                // 'outsideGlobalVar' | 'g
 setVariable                                           // 'outsideGlobalVar'
 push 123                                              // 'outsideGlobalVar' | 123
 setVariable                                           // --<empty>
-function2 gatherStats (r:2='velocity') (r:1='this')
+function2 'gatherStats' (r:2='velocity') (r:1='this')
   //-- var emptyLocal, emptyLocal2, nonEmptyLocal3;
   //-- var localVar = 123;
   push 123                                            // 123
@@ -127,10 +127,10 @@ function2 gatherStats (r:2='velocity') (r:1='this')
   getVariable                                         // atv | 'x' | atv.velocityX | atv
   push 'x'                                            // atv | 'x' | atv.velocityX | atv | 'x'
   getMember                                           // atv | 'x' | atv.velocityX | atv.x
-  sub                                                 // atv | 'x' | atv.velocityX-atv.x
+  subtract                                            // atv | 'x' | atv.velocityX-atv.x
   setMember                                           // --<empty>
-  //-- localVar = "foo\nbar";
-  //-- localVar = "foo\nbar"
+  //-- localVar = "foo\\nbar";
+  //-- localVar = "foo\\nbar"
   push 'foo\nbar'                                     // 'foo\nbar'
   setRegister r:6 /*local:localVar*/                  // 'foo\nbar'
   pop                                                 // --<empty>
@@ -142,7 +142,7 @@ function2 gatherStats (r:2='velocity') (r:1='this')
   add                                                 // ('{"type":"velocity","data":'+(r:velocity+1))+'}'
   return                                              // ('{"type":"velocity","data":'+(r:velocity+1))+'}'
 end // of function gatherStats
-//-- global.enqueueStats(gatherStats(atvMC.velocity), 1)
+//-- global.enqueueStats(gatherStats(atvMC.velocity), 1);
 push 1, 'atvMC'                                       // 1 | 'atvMC'
 getVariable                                           // 1 | atvMC
 push 'velocity'                                       // 1 | atvMC | 'velocity'
@@ -178,7 +178,95 @@ pop                                                   // --<empty>
 
 ## Usage
 
-Clone the repo, and run `npm i`. Then, run `npm start` to start the code in watch mode. The compiler will compile source code inlined as a string in `src/index.js`, and emit output to a file named `debug.lua` in the root. The `lua` extension is there only because the syntax highlighting for Lua is good enough. The emitted file currently contains debug trash. The program will also crash but _that's fine_ - it's crashing so I know what AST node types I haven't implemented. The comments are also `//--` and `/*--[[ --]]*/` because Flasm's comments are `//` and `/* */`, but Lua's are `--` and `--[[ --]]`.
+Clone the repo, and run `npm i`. Then, run `npm start`, or install it as a local relative npm module and run it as `js-to-flasm-as2-compiler` inside `package.json`
+
+```
+js-to-flasm-as2-compiler [configFilePath]
+```
+
+```sh
+$ npm start 
+
+> js-to-flasm-as2-compiler@0.0.1 start D:\Projects\js-to-flasm-compiler
+> node ./bin/index.js
+
+samples\A.js -> dist\A.flm
+samples\B.js -> dist\B.flm
+empty file samples\Ca.js
+samples\Caa.js -> dist\Caa.flm
+samples\hooks\foobar\initialize-socket-hook.js -> dist\hooks\foobar\initialize-socket-hook.flm
+```
+
+If you're on Linux, you can probably just
+```bash
+chmod u+x bin/index.js
+ln -s $PWD/bin/index.js ./js-to-flasm-as2-compiler
+./js-to-flasm-as2-compiler
+```
+
+The compiler will compile the JS source files in `samples/`, and emit output to the `dist/` directory.
+
+The compiler crashes if you use JS features that I haven't implemented. 
+
+The comments are also `//--` and `/*--[[ --]]*/` because Flasm's comments are `//` and `/* */`, but I use Lua's syntax highlighting for FLM (it's good enough!) and Lua's are `--` and `--[[ --]]`.
+
+## Configuration
+
+The compiler searches for a config file named `js-to-flasm.config.json` in the current directory, or from a path specified by the first argument passed to it.
+
+E.g.
+
+```
+js-to-flasm-as2-compiler ./config/js-to-flasm.config.json
+```
+
+Example config file:
+```json
+{
+  "dist": "dist/",
+  "sourceRoot": "samples/"
+}
+```
+
+No other keys are supported, and both are required. Both file paths can be anything that node's `fs.readdir()` understands. Terminating `/` is probably optional.
+
+
+### Compiler directives
+
+Compiler directives are implemented via single-line comments. Directives are not searched for inside block comments or JSDoc comments. A directive is of form:
+
+```
+// directive-name
+```
+or if it accepts arguments, it is of form:
+```
+// directive-with-args: arg1 arg2 arg3 argn
+```
+
+Current directives are:
+
+#### `@js2f/push-register-context`, `@js2f/pop-register-context`
+
+Allows you to tell the compiler about register<->variable associations. For example, if you're compiling code that gets `#include`'d inside a function that you don't control (i.e. it's disassembled code), and you want to access `this` inside the function, you can instruct the compiler that it's in register n.
+
+Pop the context once you don't need it anymore.
+
+Example 1
+```js
+// @js2f/push-register-context: r:1=this
+enqueueSocketJob('{"type": "cash", "data":' + this.cash + "}");
+// @js2f/pop-register-context
+```
+
+Example 2
+```js
+// @js2f/push-register-context: r:3=socket
+socket.onConnect = function() {
+  // can use local variables here
+  var foobar = 123;
+}
+// @js2f/pop-register-context
+```
 
 ## License
 
