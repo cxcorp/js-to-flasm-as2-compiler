@@ -236,11 +236,17 @@ The comments are also `//--` and `/*--[[ --]]*/` because Flasm's comments are `/
   - so instead of `var foo = parseInt(bar)` do `var foo = int(bar)`
   - int's and parseInt's semantics probably differ, I don't know
   - compiles into the `int` opcode
-- Postfix increment/decrement operator is only implemented for variables, not member expressions
-  - so `variable++` works but `foo.bar++` or `foo[bar]++` does not
+- Computed properties only support side-effect free expressions
+  - `foo[bar]` or `foo['bar']` or `foo[x + y + 1 + true + 0]` is okay, but `foo[bar++]` or `foo[selector()]` will fail to compile
+  - I tried to implement it but it was nontrivial to implement
+  - sorry
+- Prefix increment/decrement operator is only implemented for variables, not member expressions
+  - so `++variable` works but `++foo.bar` or `++foo[bar]` does not
   - no real blocker here, just haven't needed it and thus haven't taken the time to implement
-- Prefix increment/decrement operator not implemented
-  - `++variable` or `--variable` is not implemented
+- Postfix increment/decrement operator not implemented
+  - `variable++` or `variable++` is not implemented
+  - It's hard to implement with my current compiler design
+  - Give me a break, it's the first compiler I've written
 
 ## Configuration
 
