@@ -14,7 +14,7 @@ The compiler also simulates the stack to document the current stack as comments 
 
 - [Example](#example)
 - [Usage](#usage)
-- [Caveats](#caveats)
+- [Caveats and Flasm specific specials](#caveats-and-flasm-specific-specials)
 - [Configuration](#configuration)
 - [Compiler directives](#compiler-directives)
   * [`@js2f/push-register-context`, `@js2f/pop-register-context`](#js2fpush-register-context-js2fpop-register-context)
@@ -197,7 +197,7 @@ js-to-flasm-as2-compiler [configFilePath]
 ```
 
 ```sh
-$ npm start 
+$ npm start
 
 > js-to-flasm-as2-compiler@0.0.1 start D:\Projects\js-to-flasm-compiler
 > node ./bin/index.js
@@ -210,6 +210,7 @@ samples\hooks\foobar\initialize-socket-hook.js -> dist\hooks\foobar\initialize-s
 ```
 
 If you're on Linux, you can probably just
+
 ```bash
 chmod u+x bin/index.js
 ln -s $PWD/bin/index.js ./js-to-flasm-as2-compiler
@@ -218,19 +219,28 @@ ln -s $PWD/bin/index.js ./js-to-flasm-as2-compiler
 
 The compiler will compile the JS source files in `samples/`, and emit output to the `dist/` directory.
 
-The compiler crashes if you use JS features that I haven't implemented. 
+The compiler crashes if you use JS features that I haven't implemented.
 
 The comments are also `//--` and `/*--[[ --]]*/` because Flasm's comments are `//` and `/* */`, but I use Lua's syntax highlighting for FLM (it's good enough!) and Lua's are `--` and `--[[ --]]`.
 
-## Caveats
+## Caveats and Flasm specific specials
+
 - Only `var` is supported (no `let` or `const`)
-  * Variables are scoped to the current function, or to the global scope
+  - Variables are scoped to the current function, or to the global scope
 - `if` doesn't support logical binary operators
-  * Logical expressions are not implemented (no `&&` or `||`), though `!` is
+  - Logical expressions are not implemented (no `&&` or `||`), though `!` is
 - `class` is not implemented, use prototype based programming (make a function that is a constructor and assign functions to Ctor.prototype)
 - a lot of features are not implemented
-  * feature list: see what compiles
-
+  - feature list: see what compiles
+- Use `int()` instead of `parseInt()`
+  - so instead of `var foo = parseInt(bar)` do `var foo = int(bar)`
+  - int's and parseInt's semantics probably differ, I don't know
+  - compiles into the `int` opcode
+- Postfix increment/decrement operator is only implemented for variables, not member expressions
+  - so `variable++` works but `foo.bar++` or `foo[bar]++` does not
+  - no real blocker here, just haven't needed it and thus haven't taken the time to implement
+- Prefix increment/decrement operator not implemented
+  - `++variable` or `--variable` is not implemented
 
 ## Configuration
 
@@ -243,6 +253,7 @@ js-to-flasm-as2-compiler ./config/js-to-flasm.config.json
 ```
 
 Example config file:
+
 ```json
 {
   "dist": "dist/",
@@ -252,7 +263,6 @@ Example config file:
 
 No other keys are supported, and both are required. Both file paths can be anything that node's `fs.readdir()` understands. Terminating `/` is probably optional.
 
-
 ## Compiler directives
 
 Compiler directives are implemented via single-line comments. Directives are not searched for inside block comments or JSDoc comments. A directive is of form:
@@ -260,7 +270,9 @@ Compiler directives are implemented via single-line comments. Directives are not
 ```
 // directive-name
 ```
+
 or if it accepts arguments, it is of form:
+
 ```
 // directive-with-args: arg1 arg2 arg3 argn
 ```
@@ -274,6 +286,7 @@ Allows you to tell the compiler about register<->variable associations. For exam
 Pop the context once you don't need it anymore.
 
 Example 1
+
 ```js
 // @js2f/push-register-context: r:1=this
 enqueueSocketJob('{"type": "cash", "data":' + this.cash + "}");
@@ -281,12 +294,13 @@ enqueueSocketJob('{"type": "cash", "data":' + this.cash + "}");
 ```
 
 Example 2
+
 ```js
 // @js2f/push-register-context: r:3=socket
-socket.onConnect = function() {
+socket.onConnect = function () {
   // can use local variables here
   var foobar = 123;
-}
+};
 // @js2f/pop-register-context
 ```
 
