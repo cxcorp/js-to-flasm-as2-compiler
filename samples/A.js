@@ -5,10 +5,12 @@ function gatherStats(velocity) {
   var localVar = 123;
   globalVar = 5432;
 
-  var str1 = `hello world`
-  var str2 = `hello\n${localVar}`
-  var str3 = `${localVar}`
-  var str4 = `hello ${localVar} = ${globalVar}, ${1}.`
+  var str0 = ``;
+  var str1 = `hello world`;
+  var str2 = `hello\n${localVar}`;
+  var str3 = `${localVar}`;
+  var str4 = `${localVar} asd`;
+  var str5 = `hello ${localVar} = ${globalVar - fnResult("a")}, ${1}.`;
 
   globalVar = localVar = 1111;
   globalVar = globalVar2 = 1111;
