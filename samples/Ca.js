@@ -11,3 +11,11 @@ function bar() {
   global[x + y] = "bar";
   ++bar;
 }
+
+data =
+  `{"x":${atvMC._x - earthMC._x},` +
+  `"y":${atvMC._y - earthMC._y},` +
+  `"mod":"${atv.mod}",` +
+  `"face":"${atv.facing}",` +
+  `"down":${globalHack_wasDiggingDown},` +
+  `"depth":${_depth}}`;
